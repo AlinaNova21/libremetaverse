@@ -1090,9 +1090,6 @@ namespace LibreMetaverse.PrimMesher
                 if (sides > 4 && (hasHollow || hasProfileCut))
                     faceNum++;
 
-                if (sides < 5 && (hasHollow || hasProfileCut) && numOuterVerts < sides)
-                    faceNum++;
-
                 if (hasHollow)
                 {
                     for (var i = 0; i < numHollowVerts; i++)

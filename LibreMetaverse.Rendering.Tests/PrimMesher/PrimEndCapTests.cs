@@ -65,5 +65,38 @@ namespace LibreMetaverse.Rendering.Tests
         {
             Assert.That(Mesh(ProfileCurve.Square).Faces.Select(f => SurfaceDirection(f).Length()), Has.All.GreaterThan(0.5f));
         }
+
+        private static FacetedMesh CutBox(float begin, float end)
+        {
+            var prim = new Primitive();
+            var data = prim.PrimData;
+            data.PCode = PCode.Prim;
+            data.ProfileCurve = ProfileCurve.Square;
+            data.PathCurve = PathCurve.Line;
+            data.ProfileBegin = begin;
+            data.ProfileEnd = end;
+            data.PathEnd = 1f;
+            data.PathScaleX = 1f;
+            data.PathScaleY = 1f;
+            data.PathRevolutions = 1f;
+            prim.PrimData = data;
+            return new global::LibreMetaverse.Rendering.MeshFoundry().GenerateFacetedMesh(prim, DetailLevel.High);
+        }
+
+        // Face numbers run over the faces that exist. Texture entries are indexed by them, so a
+        // skipped number puts the texture for one face on the next one.
+        [TestCase(0.5f, 1f, 6, 3)]
+        [TestCase(0f, 0.5f, 6, 3)]
+        [TestCase(0.125f, 0.625f, 7, 4)]
+        [TestCase(0.25f, 1f, 7, 4)]
+        [TestCase(0.25f, 0.75f, 6, 3)]
+        public void Cut_boxes_have_no_gaps_in_their_face_numbers(float begin, float end, int faces, int bottom)
+        {
+            var mesh = CutBox(begin, end);
+
+            Assert.That(mesh.Faces, Has.Count.EqualTo(faces));
+            Assert.That(mesh.Faces.Select(f => f.Vertices.Count), Has.All.GreaterThan(0), "no face number may be empty");
+            Assert.That(mesh.Faces[bottom].Vertices.All(v => v.Position.Z < -0.49f), Is.True, "the bottom follows the outer sides");
+        }
     }
 }

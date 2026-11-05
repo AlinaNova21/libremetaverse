@@ -167,12 +167,17 @@ namespace LibreMetaverse.Rendering
 
             for (int i = 0; i < indexer.numPrimFaces; i++)
             {
+                // A side that a cut removes or leaves with no width has no geometry. Prim faces are
+                // numbered over the faces that exist, so it must not take up a number.
+                if (indexer.viewerVertices[i].Count == 0) { continue; }
+
+                var faceNumber = (uint)omvrmesh.Faces.Count;
                 Face oface = new Face
                 {
                     Vertices = new List<Vertex>(),
                     Indices = new List<ushort>(),
                     TextureFace = (prim.Textures != null)
-                        ? (prim.Textures.GetFace((uint)i) ?? new Primitive.TextureEntryFace(null))
+                        ? (prim.Textures.GetFace(faceNumber) ?? new Primitive.TextureEntryFace(null))
                         : new Primitive.TextureEntryFace(null)
                 };
 
