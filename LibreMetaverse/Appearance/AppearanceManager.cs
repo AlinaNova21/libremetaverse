@@ -841,7 +841,34 @@ namespace LibreMetaverse
                 return new List<InventoryBase>();
             }
 
+            UpdateWornFromContents(contents);
+            return contents;
+        }
+
+        /// <summary>
+        /// Rebuild the worn wearables and attachments from the contents of the Current Outfit folder.
+        /// </summary>
+        /// <param name="contents">Contents of the Current Outfit folder</param>
+        internal void UpdateWornFromContents(IEnumerable<InventoryBase> contents)
+        {
             var wearables = new MultiValueDictionary<WearableType, WearableData>();
+
+            // Fetching the folder returns each link and the item it points to, so a worn item is seen twice.
+            var seenWearables = new HashSet<UUID>();
+            void AddWearable(InventoryWearable wearable)
+            {
+                if (seenWearables.Add(wearable.UUID))
+                {
+                    wearables.Add(wearable.WearableType, new WearableData()
+                    {
+                        ItemID = wearable.UUID,
+                        AssetID = wearable.AssetUUID,
+                        AssetType = wearable.AssetType,
+                        WearableType = wearable.WearableType
+                    });
+                }
+            }
+
             // Clear stale attachment entries from any previous outfit before rebuilding.
             // SL viewer always rebuilds from scratch on re-dress.
             Attachments.Clear();
@@ -858,13 +885,7 @@ namespace LibreMetaverse
                         }
                         if (w != null && !w.IsLink())
                         {
-                            wearables.Add(w.WearableType, new WearableData()
-                            {
-                                ItemID = w.UUID,
-                                AssetID = w.AssetUUID,
-                                AssetType = w.AssetType,
-                                WearableType = w.WearableType
-                            });
+                            AddWearable(w);
                         }
                         break;
                     }
@@ -905,13 +926,7 @@ namespace LibreMetaverse
                         switch (resolved)
                         {
                             case InventoryWearable w when !w.IsLink():
-                                wearables.Add(w.WearableType, new WearableData
-                                {
-                                    ItemID = w.UUID,
-                                    AssetID = w.AssetUUID,
-                                    AssetType = w.AssetType,
-                                    WearableType = w.WearableType
-                                });
+                                AddWearable(w);
                                 break;
                             case InventoryAttachment ra:
                                 Attachments.AddOrUpdate(ra.ResolvedItemID, ra.AttachmentPoint, (_, _) => ra.AttachmentPoint);
@@ -931,7 +946,6 @@ namespace LibreMetaverse
                 lock (Wearables) { Wearables = wearables; }
 
             OnAgentWearables(new AgentWearablesReplyEventArgs());
-            return contents;
         }
 
         /// <summary>
