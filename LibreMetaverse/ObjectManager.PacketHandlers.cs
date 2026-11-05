@@ -25,6 +25,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+using System.Linq;
 using LibreMetaverse.Interfaces;
 using LibreMetaverse.Messages.Linden;
 using LibreMetaverse.Packets;
@@ -689,6 +690,11 @@ namespace LibreMetaverse
                     // PCode
                     var pcode = (PCode)block.Data[i++];
 
+                    if (!_replayingCache && ObjectCache is { } objectCache && block.Data.Length >= CompressedCrcOffset + 4)
+                    {
+                        objectCache.Store(simulator.Handle, simulator.ID, LocalID, CompressedUpdateCrc(block.Data), block.Data);
+                    }
+
                     #region Relevance check
 
                     if (!Client.Settings.World.AlwaysDecodeObjects)
@@ -925,8 +931,88 @@ namespace LibreMetaverse
         /// <summary>Process an incoming packet and raise the appropriate events</summary>
         /// <param name="sender">The sender</param>
         /// <param name="e">The EventArgs object containing the packet data</param>
+        /// <summary>Sorts a region's notices into objects held and objects to ask for.</summary>
+        internal static (List<(uint Id, uint Flags, byte[] Update)> Hits, List<(uint Id, byte MissType)> Misses) PlanCachedNotices(
+            IObjectCache cache, ulong regionHandle, UUID cacheId, ObjectUpdateCachedPacket.ObjectDataBlock[] notices)
+        {
+            var hits = new List<(uint, uint, byte[])>();
+            var misses = new List<(uint, byte)>();
+
+            foreach (var notice in notices)
+            {
+                switch (cache.TryGet(regionHandle, cacheId, notice.ID, notice.CRC, out var update))
+                {
+                    case ObjectCacheResult.Hit when update != null:
+                        hits.Add((notice.ID, notice.UpdateFlags, update));
+                        break;
+                    case ObjectCacheResult.Stale:
+                        misses.Add((notice.ID, CacheMissCrc));
+                        break;
+                    default:
+                        misses.Add((notice.ID, CacheMissTotal));
+                        break;
+                }
+            }
+            return (hits, misses);
+        }
+
+        /// <summary>Feeds held objects through the normal decoder, so they act like fresh updates.</summary>
+        private void ReplayCachedObjects(
+            Simulator simulator, ObjectUpdateCachedPacket notices, List<(uint Id, uint Flags, byte[] Update)> hits)
+        {
+            const int perPacket = 16;
+
+            for (var start = 0; start < hits.Count; start += perPacket)
+            {
+                var batch = hits.GetRange(start, Math.Min(perPacket, hits.Count - start));
+                var packet = new ObjectUpdateCompressedPacket
+                {
+                    RegionData = { RegionHandle = notices.RegionData.RegionHandle, TimeDilation = notices.RegionData.TimeDilation },
+                    ObjectData = batch
+                        .Select(hit => new ObjectUpdateCompressedPacket.ObjectDataBlock { UpdateFlags = hit.Flags, Data = hit.Update })
+                        .ToArray()
+                };
+
+                _replayingCache = true;
+                try
+                {
+                    ObjectUpdateCompressedHandler(this, new PacketReceivedEventArgs(packet, simulator));
+                }
+                finally
+                {
+                    _replayingCache = false;
+                }
+            }
+
+            if (ObjectCache is not { } cache) { return; }
+            foreach (var hit in hits)
+            {
+                if (cache.TryGetOverride(simulator.Handle, simulator.ID, hit.Id, out var message) && message != null)
+                {
+                    ApplyGltfMaterialOverride(simulator, message);
+                }
+            }
+        }
+
+        /// <summary>The CRC in a compressed update, after the ID, local ID, PCode and state.</summary>
+        internal static uint CompressedUpdateCrc(byte[] data) => Utils.BytesToUInt(data, CompressedCrcOffset);
+
+        private const int CompressedCrcOffset = 16 + 4 + 1 + 1;
+
+        [ThreadStatic]
+        private static bool _replayingCache;
+
         protected void ObjectUpdateCachedHandler(object? sender, PacketReceivedEventArgs e)
         {
+            if (ObjectCache is { } objectCache)
+            {
+                var notices = (ObjectUpdateCachedPacket)e.Packet;
+                var plan = PlanCachedNotices(objectCache, e.Simulator.Handle, e.Simulator.ID, notices.ObjectData);
+                ReplayCachedObjects(e.Simulator, notices, plan.Hits);
+                RequestObjects(e.Simulator, plan.Misses);
+                return;
+            }
+
             if (Client.Settings.World.AlwaysRequestObjects)
             {
                 var cachedPrimitives = Client.Settings.World.CachePrimitives;

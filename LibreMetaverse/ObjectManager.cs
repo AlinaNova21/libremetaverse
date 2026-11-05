@@ -75,6 +75,9 @@ namespace LibreMetaverse
     /// </summary>
     public partial class ObjectManager : IDisposable
     {
+        /// <summary>Keeps objects between sessions. Set this before logging in.</summary>
+        public IObjectCache? ObjectCache { get; set; }
+
         public const float HAVOK_TIMESTEP = 1.0f / 45.0f;
 
         #region Delegates
@@ -678,6 +681,29 @@ namespace LibreMetaverse
         /// <param name="localIDs">An array containing the Local IDs of the objects</param>
         public void RequestObjects(Simulator simulator, List<uint> localIDs)
         {
+            RequestObjects(simulator, localIDs.Select(id => (id, CacheMissTotal)).ToList());
+        }
+
+        /// <summary>A miss because the object is not held at all.</summary>
+        internal const byte CacheMissTotal = 0;
+
+        /// <summary>A miss because the held copy has changed.</summary>
+        internal const byte CacheMissCrc = 1;
+
+        /// <summary>The most objects one request can carry.</summary>
+        private const int MaxRequestBlocks = 255;
+
+        /// <summary>Requests objects, saying why each one is needed.</summary>
+        internal void RequestObjects(Simulator simulator, List<(uint Id, byte MissType)> objects)
+        {
+            for (var start = 0; start < objects.Count; start += MaxRequestBlocks)
+            {
+                SendObjectRequest(simulator, objects.GetRange(start, Math.Min(MaxRequestBlocks, objects.Count - start)));
+            }
+        }
+
+        private void SendObjectRequest(Simulator simulator, List<(uint Id, byte MissType)> objects)
+        {
             RequestMultipleObjectsPacket request = new RequestMultipleObjectsPacket
             {
                 AgentData =
@@ -685,15 +711,15 @@ namespace LibreMetaverse
                     AgentID = Client.Self.AgentID,
                     SessionID = Client.Self.SessionID
                 },
-                ObjectData = new RequestMultipleObjectsPacket.ObjectDataBlock[localIDs.Count]
+                ObjectData = new RequestMultipleObjectsPacket.ObjectDataBlock[objects.Count]
             };
 
-            for (var i = 0; i < localIDs.Count; i++)
+            for (var i = 0; i < objects.Count; i++)
             {
                 request.ObjectData[i] = new RequestMultipleObjectsPacket.ObjectDataBlock
                 {
-                    ID = localIDs[i],
-                    CacheMissType = 0
+                    ID = objects[i].Id,
+                    CacheMissType = objects[i].MissType
                 };
             }
 

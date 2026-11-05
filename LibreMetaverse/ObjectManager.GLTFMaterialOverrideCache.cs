@@ -126,20 +126,29 @@ namespace LibreMetaverse
         {
             if (e.Method != GenericStreamingMethod.GltfMaterialOverride) { return; }
 
+            var localId = ApplyGltfMaterialOverride(e.Simulator, e.Data);
+            if (localId is { } id)
+            {
+                ObjectCache?.StoreOverride(e.Simulator.Handle, e.Simulator.ID, id, e.Data);
+            }
+        }
+
+        /// <summary>Applies an override message, and gives the object it was for.</summary>
+        private uint? ApplyGltfMaterialOverride(Simulator simulator, byte[] message)
+        {
             OSD parsed;
             try
             {
-                parsed = OSDParser.DeserializeLLSDNotation(Utils.BytesToString(e.Data));
+                parsed = OSDParser.DeserializeLLSDNotation(Utils.BytesToString(message));
             }
             catch (Exception ex)
             {
                 Logger.Warn("Failed to parse GltfMaterialOverride payload", ex, Client);
-                return;
+                return null;
             }
 
-            if (!(parsed is OSDMap data)) { return; }
+            if (!(parsed is OSDMap data)) { return null; }
 
-            var simulator = e.Simulator;
             var localId = (uint)data["id"].AsInteger();
             simulator.ObjectsPrimitives.TryGetValue(localId, out Primitive? prim);
             simulator.GLTFMaterialOverrides.TryGetValue(localId, out var previous);
@@ -152,7 +161,7 @@ namespace LibreMetaverse
                 {
                     ClearFaceOverrides(prim.Textures, previous.FaceOverrides.Keys);
                 }
-                return;
+                return localId;
             }
 
             var od = data["od"] as OSDArray;
@@ -179,6 +188,7 @@ namespace LibreMetaverse
             }
 
             OnGLTFMaterialOverrideReceived(new GLTFMaterialOverrideEventArgs(simulator, entry));
+            return localId;
         }
 
         /// <summary>

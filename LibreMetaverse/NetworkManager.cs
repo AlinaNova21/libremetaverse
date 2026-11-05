@@ -1424,6 +1424,18 @@ namespace LibreMetaverse
         /// <summary>Process an incoming packet and raise the appropriate events</summary>
         /// <param name="sender">The sender</param>
         /// <param name="e">The EventArgs object containing the packet data</param>
+        /// <summary>
+        /// Bit 0 asks for all cacheable objects, bit 1 says the cache is empty so there is no need
+        /// to name objects for it, and bit 2 says the client supports self appearance.
+        /// </summary>
+        private uint HandshakeFlags(Simulator simulator, UUID cacheId)
+        {
+            const uint sendCacheable = 0x1, cacheEmpty = 0x2, selfAppearance = 0x4;
+
+            var hasCache = Client.Objects.ObjectCache?.HasEntries(simulator.Handle, cacheId) == true;
+            return sendCacheable | selfAppearance | (hasCache ? 0 : cacheEmpty);
+        }
+
         protected void RegionHandshakeHandler(object? sender, PacketReceivedEventArgs e)
         {
             RegionHandshakePacket handshake = (RegionHandshakePacket)e.Packet;
@@ -1476,7 +1488,7 @@ namespace LibreMetaverse
                     AgentID = Client.Self.AgentID,
                     SessionID = Client.Self.SessionID
                 },
-                RegionInfo = { Flags = 0x1 | 0x2 | 0x4 } // 0x3 == 
+                RegionInfo = { Flags = HandshakeFlags(simulator, handshake.RegionInfo.CacheID) }
             };
             SendPacket(reply, simulator);
 
