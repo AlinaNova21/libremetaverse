@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -65,13 +66,10 @@ namespace LibreMetaverse.Tests.RLV.Commands
         }
 
         [Test]
-        public async Task TpTo_RestrictedUnsit()
+        public async Task TpTo_RestrictedUnsit_ByAnotherObject_WhileSitting()
         {
-            await _rlv.ProcessMessageAsync("@unsit=n", _sender.Id, _sender.Name);
-
-            _actionCallbacks
-                .Setup(e => e.TpToAsync(It.IsAny<float>(), It.IsAny<float>(), It.IsAny<float>(), It.IsAny<string?>(), It.IsAny<float?>(), It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
+            await _rlv.ProcessMessageAsync("@unsit=n", Guid.NewGuid(), "Other");
+            _queryCallbacks.Setup(e => e.IsSittingAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
             // Act
             Assert.That(await _rlv.ProcessMessageAsync("@tpto:1.5/2.5/3.5=force", _sender.Id, _sender.Name), Is.False);
@@ -81,19 +79,39 @@ namespace LibreMetaverse.Tests.RLV.Commands
         }
 
         [Test]
-        public async Task TpTo_RestrictedTpLoc()
+        public async Task TpTo_RestrictedUnsit_ByAnotherObject_NotSitting()
         {
-            await _rlv.ProcessMessageAsync("@tploc=n", _sender.Id, _sender.Name);
-
+            await _rlv.ProcessMessageAsync("@unsit=n", Guid.NewGuid(), "Other");
+            _queryCallbacks.Setup(e => e.IsSittingAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
             _actionCallbacks
-                .Setup(e => e.TpToAsync(It.IsAny<float>(), It.IsAny<float>(), It.IsAny<float>(), It.IsAny<string?>(), It.IsAny<float?>(), It.IsAny<CancellationToken>()))
+                .Setup(e => e.TpToAsync(It.IsAny<float>(), It.IsAny<float>(), It.IsAny<float>(), It.IsAny<string>(), It.IsAny<float?>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
+
+            Assert.That(await _rlv.ProcessMessageAsync("@tpto:1.5/2.5/3.5=force", _sender.Id, _sender.Name), Is.True);
+        }
+
+        [Test]
+        public async Task TpTo_RestrictedTpLoc_ByAnotherObject()
+        {
+            await _rlv.ProcessMessageAsync("@tploc=n", Guid.NewGuid(), "Other");
 
             // Act
             Assert.That(await _rlv.ProcessMessageAsync("@tpto:1.5/2.5/3.5=force", _sender.Id, _sender.Name), Is.False);
 
             // Assert
             _actionCallbacks.VerifyNoOtherCalls();
+        }
+
+        [Test]
+        public async Task TpTo_OwnRestrictions_DoNotStopIt()
+        {
+            await _rlv.ProcessMessageAsync("@tploc=n,unsit=n", _sender.Id, _sender.Name);
+            _queryCallbacks.Setup(e => e.IsSittingAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+            _actionCallbacks
+                .Setup(e => e.TpToAsync(It.IsAny<float>(), It.IsAny<float>(), It.IsAny<float>(), It.IsAny<string>(), It.IsAny<float?>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+
+            Assert.That(await _rlv.ProcessMessageAsync("@tpto:1.5/2.5/3.5=force", _sender.Id, _sender.Name), Is.True);
         }
 
         #endregion

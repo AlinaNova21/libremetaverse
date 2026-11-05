@@ -681,7 +681,8 @@ namespace LibreMetaverse.RLV
 
         private async Task<bool> HandleUnsit(RlvMessage command, CancellationToken cancellationToken)
         {
-            if (!_manager.CanUnsit())
+            // As in RLVa, an object's own restrictions do not stop what it forces.
+            if (_manager.IsRestrictedByOthers(RlvRestrictionType.Unsit, command.Sender))
             {
                 return false;
             }
@@ -797,12 +798,14 @@ namespace LibreMetaverse.RLV
 
         private async Task<bool> HandleTpTo(RlvMessage command, CancellationToken cancellationToken)
         {
-            // @tpto is inhibited by @tploc=n, by @unsit too.
-            if (!_manager.CanTpLoc())
+            // @tpto is inhibited by @tploc=n, and by @unsit=n while sitting. As in RLVa, an object's
+            // own restrictions do not stop what it forces.
+            if (_manager.IsRestrictedByOthers(RlvRestrictionType.TpLoc, command.Sender))
             {
                 return false;
             }
-            if (!_manager.CanUnsit())
+            if (_manager.IsRestrictedByOthers(RlvRestrictionType.Unsit, command.Sender)
+                && await _queryCallbacks.IsSittingAsync(cancellationToken).ConfigureAwait(false))
             {
                 return false;
             }

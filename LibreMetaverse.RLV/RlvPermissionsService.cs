@@ -174,6 +174,12 @@ namespace LibreMetaverse.RLV
         {
             return _restrictionProvider.GetRestrictionsByType(RlvRestrictionType.TpLm).Count == 0;
         }
+        /// <summary>Whether a restriction of this type is set by anything but the given object.</summary>
+        public bool IsRestrictedByOthers(RlvRestrictionType type, Guid sender)
+        {
+            return _restrictionProvider.GetRestrictionsByType(type).Any(n => !n.IsException && n.Sender != sender);
+        }
+
         public bool CanTpLoc()
         {
             return _restrictionProvider.GetRestrictionsByType(RlvRestrictionType.TpLoc).Count == 0;
