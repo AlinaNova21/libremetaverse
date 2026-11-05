@@ -1083,7 +1083,9 @@ namespace LibreMetaverse.PrimMesher
                 for (var i = 0; i < numOuterVerts - 1; i++)
                     faceNumbers.Add(sides < 5 && i <= sides ? faceNum++ : faceNum);
 
-                faceNumbers.Add(hasProfileCut ? -1 : faceNum++);
+                // A closed 3 or 4 sided profile repeats its first vertex, and that vertex starts no new side.
+                var closingVertex = !hasProfileCut && sides < 5 && numOuterVerts > sides;
+                faceNumbers.Add(hasProfileCut ? -1 : closingVertex ? faceNum - 1 : faceNum++);
 
                 if (sides > 4 && (hasHollow || hasProfileCut))
                     faceNum++;
@@ -1929,6 +1931,52 @@ namespace LibreMetaverse.PrimMesher
                         }
                     }
 
+                    // add the bottom cap, which faces away from the profile, so its winding is reversed
+                    if (needEndFaces && nodeIndex == 0 && viewerMode)
+                    {
+                        var bottomNormal = profile.faceNormal;
+                        bottomNormal *= node.rotation;
+                        bottomNormal.X = -bottomNormal.X;
+                        bottomNormal.Y = -bottomNormal.Y;
+                        bottomNormal.Z = -bottomNormal.Z;
+
+                        for (var fi = 0; fi < profile.faces.Count; fi++)
+                        {
+                            var f = profile.faces[fi];
+
+                            var nv = new ViewerFace(profile.bottomFaceNumber);
+                            nv.v1 = tmp[f.v1];
+                            nv.v2 = tmp[f.v3];
+                            nv.v3 = tmp[f.v2];
+
+                            nv.coordIndex1 = f.v1 + coordsLen;
+                            nv.coordIndex2 = f.v3 + coordsLen;
+                            nv.coordIndex3 = f.v2 + coordsLen;
+
+                            nv.n1 = bottomNormal;
+                            nv.n2 = bottomNormal;
+                            nv.n3 = bottomNormal;
+
+                            nv.uv1 = profile.faceUVs[f.v1];
+                            nv.uv2 = profile.faceUVs[f.v3];
+                            nv.uv3 = profile.faceUVs[f.v2];
+
+                            // the bottom is seen from the other side, so V runs the other way
+                            nv.uv1.V = 1.0f - nv.uv1.V;
+                            nv.uv2.V = 1.0f - nv.uv2.V;
+                            nv.uv3.V = 1.0f - nv.uv3.V;
+
+                            if (pathType == PathType.Linear)
+                            {
+                                nv.uv1.Flip();
+                                nv.uv2.Flip();
+                                nv.uv3.Flip();
+                            }
+
+                            viewerFaces.Add(nv);
+                        }
+                    }
+
                     // build side faces between layers
                     var numVerts = profileCount;
                     var thisV = 1.0f - node.percentOfPath;
@@ -1952,6 +2000,10 @@ namespace LibreMetaverse.PrimMesher
                             faces.Add(newFace2);
 
                             if (!viewerMode) continue;
+
+                            // the strip from a closing vertex to the first vertex has no width
+                            var (edgeStart, edgeEnd) = (coords[i], coords[iNext]);
+                            if (edgeStart.X == edgeEnd.X && edgeStart.Y == edgeEnd.Y && edgeStart.Z == edgeEnd.Z) continue;
 
                             int primFaceNum = 0;
                             if (profile.faceNumbers != null && whichVert >= 0 && whichVert < profile.faceNumbers.Count)
