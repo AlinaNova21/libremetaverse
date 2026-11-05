@@ -409,6 +409,8 @@ namespace LibreMetaverse
                     return "link_f";
                 case AssetType.Mesh:
                     return "mesh";
+                case AssetType.Material:
+                    return "material";
                 case AssetType.Widget:
                     return "widget";
                 case AssetType.Person:
@@ -1409,6 +1411,9 @@ namespace LibreMetaverse
                     break;
                 case AssetType.Settings:
                     asset = new AssetSettings();
+                    break;
+                case AssetType.Material:
+                    asset = new AssetMaterial();
                     break;
                 default:
                     asset = new AssetMutable(type);

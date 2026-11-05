@@ -867,6 +867,12 @@ namespace LibreMetaverse
         public LightImage LightMap;
         /// <summary></summary>
         public SculptData? Sculpt;
+
+        /// <summary>
+        /// PBR material asset IDs by face number. The texture entry of such a face holds a blank
+        /// texture, as the real textures are in the material.
+        /// </summary>
+        public Dictionary<byte, UUID> RenderMaterials = new Dictionary<byte, UUID>();
         /// <summary>Extended mesh parameter flags (PARAMS_EXTENDED_MESH = 0x70)</summary>
         public UInt32 ExtendedMeshFlags;
         /// <summary>
@@ -1301,6 +1307,25 @@ namespace LibreMetaverse
             if (!string.IsNullOrEmpty(desc)) prim.Properties.Description = desc;
         }
 
+        /// <summary>
+        /// Reads the PBR materials block: a count, then a face number and material asset ID for each.
+        /// </summary>
+        private static Dictionary<byte, UUID> ParseRenderMaterials(byte[] data, int pos, int length)
+        {
+            const int entrySize = 1 + 16;
+            var materials = new Dictionary<byte, UUID>();
+            if (length < 1) { return materials; }
+
+            var end = pos + length;
+            int count = data[pos++];
+            for (var entry = 0; entry < count && pos + entrySize <= end; entry++)
+            {
+                materials[data[pos]] = new UUID(data, pos + 1);
+                pos += entrySize;
+            }
+            return materials;
+        }
+
         public int SetExtraParamsFromBytes(byte[] data, int pos)
         {
             int i = pos;
@@ -1330,6 +1355,10 @@ namespace LibreMetaverse
                 else if (type == ExtraParamType.ExtendedMesh)
                 {
                     ExtendedMeshFlags = Utils.BytesToUInt(data, i);
+                }
+                else if (type == ExtraParamType.RenderMaterial)
+                {
+                    RenderMaterials = ParseRenderMaterials(data, i, (int)paramLength);
                 }
 
                 i += (int)paramLength;
